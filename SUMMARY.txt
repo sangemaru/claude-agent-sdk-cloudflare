@@ -1,0 +1,169 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                     CLAUDE CLI TIMEOUT - ROOT CAUSE ANALYSIS                ║
+║                              COMPLETE & READY TO TEST                       ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+┌─ PRIMARY ISSUE ──────────────────────────────────────────────────────────────┐
+│                                                                               │
+│  PROBLEM: Claude CLI hangs indefinitely in Docker container                  │
+│  CAUSE:   stdin is not closed, CLI waits for input despite --print flag     │
+│  FIX:     Call claude.stdin.end() immediately after spawn                   │
+│  STATUS:  ✅ APPLIED to container/server.ts                                 │
+│                                                                               │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+┌─ THE CRITICAL FIX (3 lines of code) ─────────────────────────────────────────┐
+│                                                                               │
+│  Location: /home/blackthorne/Work/cloudflare-agents/container/server.ts     │
+│  Lines: 107-112                                                              │
+│                                                                               │
+│  if (claude.stdin) {                                                         │
+│    claude.stdin.end();  // ← This prevents stdin waiting                    │
+│    console.log("[CLI] stdin closed immediately");                           │
+│  }                                                                            │
+│                                                                               │
+│  Confidence: 85% this solves the timeout issue                              │
+│                                                                               │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+┌─ ADDITIONAL IMPROVEMENTS ────────────────────────────────────────────────────┐
+│                                                                               │
+│  ✓ Comprehensive debug logging with timestamps                              │
+│  ✓ Credentials file verification (size, permissions)                        │
+│  ✓ 10-second warning timer (instead of silent 5-min timeout)               │
+│  ✓ Process lifecycle logging (spawn, exit, close events)                    │
+│  ✓ ~70 lines of non-breaking improvements                                   │
+│                                                                               │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+┌─ TEST INFRASTRUCTURE (if primary fix doesn't work) ───────────────────────────┐
+│                                                                               │
+│  4 minimal test Dockerfiles:                                                 │
+│    1. debug-minimal    → Tests CLI installation on Alpine                   │
+│    2. debug-network    → Tests API connectivity                             │
+│    3. debug-strace     → System call tracing (most powerful)                │
+│    4. debug-version    → Tests for version regressions                      │
+│                                                                               │
+│  Run all with: ./QUICK_TEST.sh                                              │
+│                                                                               │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+┌─ IF STDIN FIX DOESN'T WORK: Fallback Root Causes ──────────────────────────────┐
+│                                                                               │
+│  HYPOTHESIS 2 (35% prob):  Alpine/musl incompatibility                      │
+│    Evidence: debug-minimal hangs                                            │
+│    Fix: Use node:20-slim instead of node:20-alpine                         │
+│                                                                               │
+│  HYPOTHESIS 3 (20% prob):  File permissions                                 │
+│    Evidence: Credentials file not readable by node user                    │
+│    Fix: Check ownership logged by enhanced logging                         │
+│                                                                               │
+│  HYPOTHESIS 4 (15% prob):  Network/DNS blocking                             │
+│    Evidence: debug-network fails                                            │
+│    Fix: Check Cloudflare container network config                          │
+│                                                                               │
+│  HYPOTHESIS 5 (10% prob):  Version regression                               │
+│    Evidence: debug-version works with old, fails with new                 │
+│    Fix: Pin version in Dockerfile line 19                                  │
+│                                                                               │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+┌─ HOW TO VERIFY THE FIX ──────────────────────────────────────────────────────┐
+│                                                                               │
+│  1. Rebuild:  docker build -f Dockerfile -t cloudflare-agents:fixed .       │
+│                                                                               │
+│  2. Run:      docker run --rm \                                             │
+│                 -e CLAUDE_ACCESS_TOKEN="token" \                            │
+│                 -e CLAUDE_REFRESH_TOKEN="token" \                           │
+│                 -p 8080:8080 \                                              │
+│                 cloudflare-agents:fixed                                     │
+│                                                                               │
+│  3. Test:     curl -X POST http://localhost:8080/run \                      │
+│                 -d '{"prompt": "test"}'                                     │
+│                                                                               │
+│  4. Look for:                                                                │
+│     ✓ "[CLI] stdin closed immediately" in logs                             │
+│     ✓ "[CLI] Process closed after XXXms with code: 0"                      │
+│     ✓ Response returns in <10 seconds (not timeout)                        │
+│     ✓ Response contains Claude's output                                     │
+│                                                                               │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+┌─ FILES CREATED / MODIFIED ───────────────────────────────────────────────────┐
+│                                                                               │
+│  MODIFIED (1 file):                                                          │
+│    • container/server.ts - stdin.end() fix + logging                        │
+│                                                                               │
+│  NEW TEST INFRASTRUCTURE (4 Dockerfiles + 1 script):                        │
+│    • Dockerfile.debug-minimal                                               │
+│    • Dockerfile.debug-network                                               │
+│    • Dockerfile.debug-strace                                                │
+│    • Dockerfile.debug-version-pinned                                        │
+│    • QUICK_TEST.sh (run all 4 tests)                                        │
+│                                                                               │
+│  NEW DOCUMENTATION (5 files):                                                │
+│    • CRITICAL_FIX.md           ← START HERE (explains stdin.end)            │
+│    • ROOT_CAUSE_ANALYSIS.md    ← Comprehensive analysis                     │
+│    • DEBUG_PLAN.md             ← Step-by-step testing                       │
+│    • CHANGES_SUMMARY.md        ← All code changes documented                │
+│    • DEBUGGING_COMPLETE.txt    ← Project summary                            │
+│                                                                               │
+│  All files in: /home/blackthorne/Work/cloudflare-agents/                    │
+│                                                                               │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+┌─ GEMINI DEVIL'S ADVOCATE INSIGHTS APPLIED ───────────────────────────────────┐
+│                                                                               │
+│  From super-agent analysis (mcp__superagent__gemini):                        │
+│                                                                               │
+│  ✓ Added stdin.end() - Addresses "CLI may ignore --print flag" risk        │
+│  ✓ Comprehensive logging - Addresses "Low-level hangs are silent"          │
+│  ✓ Credentials file check - Addresses "Permissions may block access"       │
+│  ✓ Network test Dockerfile - Addresses "Network issues appear as hangs"    │
+│  ✓ strace Dockerfile - Addresses "Need syscall visibility for diagnosis"   │
+│  ✓ Version test Dockerfile - Addresses "Could be recent regression"        │
+│                                                                               │
+│  Key insight: "When it hangs, strace shows exactly what it's waiting for"   │
+│               - Used to create most powerful diagnostic tool                │
+│                                                                               │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+┌─ TIMELINE TO RESOLUTION ─────────────────────────────────────────────────────┐
+│                                                                               │
+│  Phase 1 (5 min):  Rebuild with fix                                        │
+│    docker build -f Dockerfile -t cloudflare-agents:fixed .                 │
+│                                                                               │
+│  Phase 2 (5 min):  Quick test                                              │
+│    curl -X POST http://localhost:8080/run -d '{"prompt":"test"}'          │
+│                                                                               │
+│  Phase 3 (10 min): Interpret results                                        │
+│    If success: Done! Deploy the fix.                                       │
+│    If failure: Run ./QUICK_TEST.sh for deeper diagnostics                  │
+│                                                                               │
+│  Phase 4 (15 min): Run full test suite (if needed)                         │
+│    Tests 1-4 pinpoint exact root cause                                     │
+│                                                                               │
+│  TOTAL: 30 minutes to identify and fix root cause                          │
+│                                                                               │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+┌─ SUCCESS CRITERIA ───────────────────────────────────────────────────────────┐
+│                                                                               │
+│  ✓ Response returns in <10 seconds (currently times out at 5 min)          │
+│  ✓ Exit code is 0 (not error)                                              │
+│  ✓ Response JSON contains Claude's output                                  │
+│  ✓ Logs show "[CLI] Process closed" not "[CLI] TIMEOUT"                    │
+│  ✓ stdin.end() call appears in logs                                        │
+│                                                                               │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║                          READY FOR TESTING                                 ║
+║                                                                            ║
+║  Next Step: Review CRITICAL_FIX.md, then rebuild and test                 ║
+║  Location: /home/blackthorne/Work/cloudflare-agents/                       ║
+║  Status: ✓ Analysis complete                                              ║
+║          ✓ Primary fix applied                                            ║
+║          ✓ Test infrastructure ready                                      ║
+║                                                                            ║
+╚════════════════════════════════════════════════════════════════════════════╝

@@ -5,8 +5,8 @@
   "type": "module",
   "main": "server.ts",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "dev": "npx wrangler dev",
+    "deploy": "npx wrangler deploy"
   },
   "dependencies": {
     "@cloudflare/containers": "^0.0.28",

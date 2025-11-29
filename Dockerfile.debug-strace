@@ -1,0 +1,22 @@
+# Debug with system call tracing to see exactly where it hangs
+FROM node:20-alpine
+
+RUN apk add --no-cache bash git strace curl
+
+# Install Claude CLI
+RUN npm install -g @anthropic-ai/claude-code@latest
+
+# Create minimal test credentials
+RUN mkdir -p /root/.claude && \
+    echo '{"claudeAiOauth":{"accessToken":"test","refreshToken":"test"}}' > /root/.claude/.credentials.json && \
+    chmod 600 /root/.claude/.credentials.json
+
+# Set environment
+ENV HOME=/root
+ENV SHELL=/bin/bash
+ENV CLAUDE_USE_SUBSCRIPTION=true
+ENV CLAUDE_BYPASS_BALANCE_CHECK=true
+
+# Run with strace to see system calls
+# This shows: open/read/write/connect/sendto - where does it hang?
+CMD ["sh", "-c", "strace -f -e trace=open,read,write,connect,sendto -o /tmp/strace.log claude --print 'test' 2>&1; echo '=== STRACE LOG ==='; tail -50 /tmp/strace.log"]

@@ -1,6 +1,6 @@
 name = "claude-agent-worker"
 main = "server.ts"
-account_id = "7a25071bd379490c242277ea870df57a"
+account_id = "c41f1934b3a0975522e90a532420b594"
 compatibility_date = "2025-09-23"
 compatibility_flags = ["nodejs_compat"]
 

@@ -1,14 +1,13 @@
 {
   "name": "claude-agent-container",
-  "version": "1.0.0",
+  "version": "2.0.0",
+  "description": "Claude CLI container with Max subscription support",
   "type": "module",
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc"
   },
-  "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.1.21"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/node": "^24.5.2",
     "typescript": "^5.9.2"

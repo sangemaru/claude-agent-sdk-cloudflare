@@ -1,0 +1,13 @@
+# Minimal test - does the CLI even install and run?
+FROM node:20-alpine
+
+RUN apk add --no-cache bash git
+
+# Try to install Claude CLI and run basic command
+RUN npm install -g @anthropic-ai/claude-code@latest
+
+# Verify it's installed
+RUN which claude && echo "Claude CLI found"
+
+# Simple test - just print version
+CMD ["claude", "--version"]

@@ -1,0 +1,21 @@
+# Test with a specific older version to check for recent regressions
+FROM node:20-alpine
+
+RUN apk add --no-cache bash git
+
+# Try a known-good older version first
+RUN npm install -g @anthropic-ai/claude-code@1.14.0 || \
+    npm install -g @anthropic-ai/claude-code@1.13.0 || \
+    npm install -g @anthropic-ai/claude-code@latest
+
+# Setup credentials
+RUN mkdir -p /root/.claude && \
+    echo '{"claudeAiOauth":{"accessToken":"test","refreshToken":"test"}}' > /root/.claude/.credentials.json && \
+    chmod 600 /root/.claude/.credentials.json
+
+ENV HOME=/root
+ENV SHELL=/bin/bash
+ENV CLAUDE_USE_SUBSCRIPTION=true
+
+# Check version and try --help
+CMD ["sh", "-c", "echo 'Claude version:' && claude --version && echo 'Testing --help:' && timeout 10 claude --help || echo 'Command completed or timed out'"]

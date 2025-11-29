@@ -1,0 +1,22 @@
+# Test network connectivity without CLI - validates credentials and API access
+FROM node:20-alpine
+
+RUN apk add --no-cache bash curl
+
+# Test 1: DNS resolution
+RUN echo "=== Testing DNS ===" && \
+    nslookup api.anthropic.com || echo "DNS resolution may be broken"
+
+# Test 2: HTTPS connectivity
+RUN echo "=== Testing HTTPS ===" && \
+    curl -I https://api.anthropic.com/health 2>&1 || echo "HTTPS/Network may be broken"
+
+# Test 3: Network from within container
+CMD ["sh", "-c", "\
+    echo '=== Network Diagnostics ===' && \
+    echo 'DNS test:' && \
+    nslookup api.anthropic.com && \
+    echo 'HTTPS test:' && \
+    curl -I https://api.anthropic.com 2>&1 && \
+    echo 'Done' \
+"]

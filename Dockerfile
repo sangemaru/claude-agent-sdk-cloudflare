@@ -12,9 +12,13 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install bash (required by Claude Agent SDK)
-RUN apk add --no-cache bash
+# Install bash and git (required by Claude Code CLI)
+RUN apk add --no-cache bash git
 
+# Install Claude Code CLI globally
+RUN npm install -g @anthropic-ai/claude-code@latest
+
+# Copy application dependencies
 COPY container/package.json container/package-lock.json* ./
 RUN npm ci --omit=dev
 
@@ -23,12 +27,18 @@ COPY --from=builder /app/dist ./dist
 # Copy skills to project-level directory for auto-discovery
 COPY .claude ./.claude
 
-# Change ownership and switch to non-root user (required for bypassPermissions mode)
+# Create .claude directory in home for credentials
+RUN mkdir -p /home/node/.claude && chown -R node:node /home/node/.claude
+
+# Change ownership and switch to non-root user
 RUN chown -R node:node /app
 USER node
 
-# Set SHELL environment variable to bash for Claude Agent SDK
+# Set environment for Claude Code CLI
 ENV SHELL=/bin/bash
+ENV HOME=/home/node
+ENV CLAUDE_USE_SUBSCRIPTION=true
+ENV CLAUDE_BYPASS_BALANCE_CHECK=true
 
 EXPOSE 8080
 
