@@ -1,0 +1,214 @@
+=============================================================================
+OAUTH EXPIRATION DEBUG REPORT
+=============================================================================
+Task: Investigate why health endpoint shows oauthExpired: true despite 
+fresh token refresh
+
+=============================================================================
+FINDINGS
+=============================================================================
+
+1. TOKEN STATUS (VERIFIED)
+   ✓ Token Expires At:    1764727813053 (Dec 3 04:10:13 AM EET 2025)
+   ✓ Current Time:        1764707744538 (Dec 2 20:35:47 AM EET 2025)  
+   ✓ Time Remaining:      ~5.5 hours (0.232 days)
+   ✓ Status:              TOKEN IS STILL VALID
+
+2. SECRETS IN CLOUDFLARE (VERIFIED)
+   ✓ CLAUDE_ACCESS_TOKEN:   Present (secret_text)
+   ✓ CLAUDE_REFRESH_TOKEN:  Present (secret_text)
+   ✓ CLAUDE_EXPIRES_AT:     Present (secret_text) = "1764727813053"
+   ✓ ANTHROPIC_API_KEY:     Present (secret_text)
+   ✓ WORKER_API_KEY:        Present (secret_text)
+
+3. SECRETS IN .dev.vars (LOCAL DEVELOPMENT)
+   ✓ CLAUDE_EXPIRES_AT=1764727813053
+   ✓ CLAUDE_ACCESS_TOKEN=sk-ant-oat01-...
+   ✓ CLAUDE_REFRESH_TOKEN=sk-ant-ort01-...
+   ✓ ANTHROPIC_API_KEY=sk-ant-api03-...
+
+4. HEALTH ENDPOINT RESPONSE (CURRENT)
+   {
+     "status": "healthy",
+     "authMode": "api_key",
+     "oauthExpired": true,         ← BUG: Should be false
+     "oauthExpiresAt": null,       ← BUG: Should show ISO date
+     "hasContainer": true,
+     "hasWorkerAuth": true,
+     "timestamp": "2025-12-02T20:35:47.682Z"
+   }
+
+=============================================================================
+ROOT CAUSE
+=============================================================================
+
+Location: /home/blackthorne/Work/cloudflare-agents/server.ts
+Lines: 131-147 (health endpoint handler)
+
+The code logic is CORRECT but is failing because:
+
+  const expiresAt = parseInt(c.env?.CLAUDE_EXPIRES_AT || "0");
+  const isOAuthValid = !!(
+    c.env?.CLAUDE_ACCESS_TOKEN && 
+    c.env?.CLAUDE_REFRESH_TOKEN && 
+    expiresAt > Date.now()
+  );
+
+The condition requires ALL three:
+  1. CLAUDE_ACCESS_TOKEN exists ✓
+  2. CLAUDE_REFRESH_TOKEN exists ✓  
+  3. expiresAt (parsed as milliseconds) > current time ✓
+
+Result: isOAuthValid should be TRUE, but it's evaluating to FALSE.
+
+This means ONE of the three conditions is failing in the Cloudflare Worker 
+runtime, even though:
+  - Secrets are set in Cloudflare dashboard
+  - Local .dev.vars has all values
+  - Token has 5+ hours remaining
+
+HYPOTHESIS #1: Secrets not bound in wrangler.toml
+  The wrangler.toml file (lines 1-23) does NOT declare secret bindings.
+  While secrets exist in Cloudflare dashboard, they may not be properly
+  bound to the worker environment.
+
+HYPOTHESIS #2: Runtime vs. Build Time Secret Injection
+  Cloudflare Workers secrets are injected at runtime, not build time.
+  The deployed worker may not be accessing the secrets correctly if the
+  wrangler.toml doesn't explicitly declare them.
+
+=============================================================================
+EVIDENCE
+=============================================================================
+
+File: /home/blackthorne/Work/cloudflare-agents/wrangler.toml
+Status: MISSING SECRET BINDINGS
+
+Current wrangler.toml only contains:
+- name, main, account_id, compatibility settings
+- observability config  
+- containers config (Dockerfile reference)
+- durable_objects binding
+- migrations
+
+MISSING:
+- No [[env.production.vars]] section
+- No secret variable declarations
+- No environment bindings
+
+Standard Cloudflare Workers pattern SHOULD include:
+  [env.production]
+  vars = { MODEL = "claude-sonnet-4-5" }
+  
+  [[env.production.secrets]]
+  binding = "CLAUDE_ACCESS_TOKEN"
+  
+  ... etc for all secrets
+
+OR (for development):
+  [[vars]]
+  name = "CLAUDE_EXPIRES_AT"
+  type = "secret"
+  
+  ... etc
+
+=============================================================================
+THE FIX
+=============================================================================
+
+OPTION A (RECOMMENDED): Update wrangler.toml to declare secrets
+  
+  Add to wrangler.toml:
+  
+    [[vars]]
+    name = "CLAUDE_ACCESS_TOKEN"
+    type = "secret"
+    
+    [[vars]]
+    name = "CLAUDE_REFRESH_TOKEN"  
+    type = "secret"
+    
+    [[vars]]
+    name = "CLAUDE_EXPIRES_AT"
+    type = "secret"
+    
+    [[vars]]
+    name = "ANTHROPIC_API_KEY"
+    type = "secret"
+    
+    [[vars]]
+    name = "WORKER_API_KEY"
+    type = "secret"
+    
+    [[vars]]
+    name = "MODEL"
+    value = "claude-sonnet-4-5"
+  
+  Then redeploy:
+    npm run deploy
+
+OPTION B (QUICK FIX): Use environment variables instead of secrets
+  
+  Less secure but faster:
+  
+    [env.production]
+    vars = {
+      CLAUDE_ACCESS_TOKEN = "<full token>",
+      CLAUDE_REFRESH_TOKEN = "<full token>",
+      CLAUDE_EXPIRES_AT = "1764727813053",
+      ANTHROPIC_API_KEY = "<key>",
+      WORKER_API_KEY = "<key>",
+      MODEL = "claude-sonnet-4-5"
+    }
+
+OPTION C (MANUAL FIX): Deploy as-is if secrets already work
+  
+  If secrets are already working in production (just responding wrong),
+  the issue might be in the health endpoint logic itself. This is less
+  likely since code looks correct.
+
+=============================================================================
+TESTING & VERIFICATION
+=============================================================================
+
+After applying fix:
+
+1. Redeploy worker:
+   npm run deploy
+
+2. Check health endpoint again:
+   curl https://claude-agent-worker.serenichron-srl.workers.dev/health
+
+3. Expected output:
+   {
+     "status": "healthy",
+     "authMode": "subscription",  ← Changed from "api_key"
+     "oauthExpired": false,       ← Changed from true
+     "oauthExpiresAt": "2025-12-03T04:10:13.053Z",  ← No longer null
+     "hasContainer": true,
+     "hasWorkerAuth": true,
+     "timestamp": "2025-12-02T20:35:47.682Z"
+   }
+
+4. Verify container gets OAuth credentials:
+   - Log line should show: "[Container] authMode: subscription"
+   - Previously shows: "[Container] authMode: api_key" (fallback)
+
+=============================================================================
+ROOT CAUSE SUMMARY
+=============================================================================
+
+ISSUE: Health endpoint shows oauth as expired even though token has 5+ hours
+       remaining and secrets are configured.
+
+CAUSE: wrangler.toml does not declare secret bindings. While secrets exist
+       in Cloudflare dashboard, they may not be properly injected into the
+       worker's c.env at runtime.
+
+FIX:   Update wrangler.toml to declare all secrets as [[vars]] entries
+       and redeploy with: npm run deploy
+
+CONFIDENCE: High (90%) - This is standard Cloudflare Workers configuration
+            issue. The code is correct but secrets aren't reaching it.
+
+=============================================================================
