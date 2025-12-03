@@ -5,8 +5,13 @@
   "type": "module",
   "main": "server.ts",
   "scripts": {
-    "dev": "npx wrangler dev",
-    "deploy": "npx wrangler deploy"
+    "prebuild": "npx tsx scripts/bundle-framework.ts",
+    "dev": "npm run prebuild && npx wrangler dev",
+    "deploy": "npm run prebuild && npx wrangler deploy",
+    "sync-skills": "npx tsx scripts/sync-skills.ts",
+    "sync-agents": "npx tsx scripts/sync-agents.ts",
+    "sync-framework": "npx tsx scripts/sync-framework.ts",
+    "sync-all": "npm run sync-skills && npm run sync-agents && npm run sync-framework"
   },
   "dependencies": {
     "@cloudflare/containers": "^0.0.28",
