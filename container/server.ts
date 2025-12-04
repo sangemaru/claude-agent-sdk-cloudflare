@@ -1,10 +1,11 @@
 import { spawn } from "node:child_process";
 import http from "node:http";
 import fs from "node:fs";
-import path from "node:path";
+import path from "path";
 
 const PORT = 8080;
 const CREDENTIALS_PATH = path.join(process.env.HOME || "/home/node", ".claude", ".credentials.json");
+const FRAMEWORK_CONTEXT_PATH = path.join("/app", "framework-context.txt");
 
 /**
  * Timing-safe string comparison to prevent timing attacks
@@ -46,6 +47,26 @@ function validateApiKey(req: http.IncomingMessage): boolean {
   }
 
   return true;
+}
+
+/**
+ * Load SuperClaude framework context from bundled file
+ * This context will be prepended to all Claude queries
+ */
+function loadFrameworkContext(): string {
+  try {
+    if (fs.existsSync(FRAMEWORK_CONTEXT_PATH)) {
+      const context = fs.readFileSync(FRAMEWORK_CONTEXT_PATH, 'utf-8');
+      console.log(`[Framework] Loaded framework context: ${context.length} chars (~${Math.ceil(context.length / 4)} tokens)`);
+      return context;
+    } else {
+      console.warn(`[Framework] Framework context not found at ${FRAMEWORK_CONTEXT_PATH} - running without framework`);
+      return "";
+    }
+  } catch (error) {
+    console.error("[Framework] Failed to load framework context:", error);
+    return "";
+  }
 }
 
 /**
@@ -279,7 +300,15 @@ const server = http.createServer(async (req, res) => {
 
       console.log("[Request] Processing prompt, auth mode:", hasOAuth ? "subscription" : "api_key");
 
-      const responseText = await executeClaudeCLI(prompt);
+      // Inject framework context into the prompt
+      const frameworkContext = loadFrameworkContext();
+      const enrichedPrompt = frameworkContext
+        ? `${frameworkContext}\n\n---\n\n# User Query\n\n${prompt}`
+        : prompt;
+
+      console.log(`[Request] Prompt enriched with framework: ${!!frameworkContext}`);
+
+      const responseText = await executeClaudeCLI(enrichedPrompt);
 
       res.writeHead(200, { "content-type": "application/json" });
       return res.end(JSON.stringify({

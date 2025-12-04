@@ -24,6 +24,9 @@ RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 
+# Copy framework context bundle for framework-aware responses
+COPY framework-context.txt ./
+
 # Copy skills to project-level directory for auto-discovery
 COPY .claude ./.claude
 

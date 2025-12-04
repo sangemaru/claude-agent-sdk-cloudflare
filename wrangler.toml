@@ -20,3 +20,22 @@ class_name = "AgentContainer"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["AgentContainer"]
+
+[[r2_buckets]]
+binding = "SKILLS_BUCKET"
+bucket_name = "claude-agents-sdk"
+
+# Secret bindings (actual values set via `wrangler secret put`)
+# These are environment variables that should be configured as secrets:
+# - CLAUDE_ACCESS_TOKEN: Claude Max subscription OAuth access token
+# - CLAUDE_REFRESH_TOKEN: Claude Max subscription OAuth refresh token
+# - CLAUDE_EXPIRES_AT: OAuth token expiration timestamp
+# - ANTHROPIC_API_KEY: Anthropic API key (alternative to OAuth)
+# - WORKER_API_KEY: Worker authentication key
+#
+# To set secrets, run:
+#   wrangler secret put CLAUDE_ACCESS_TOKEN
+#   wrangler secret put CLAUDE_REFRESH_TOKEN
+#   wrangler secret put CLAUDE_EXPIRES_AT
+#   wrangler secret put ANTHROPIC_API_KEY
+#   wrangler secret put WORKER_API_KEY

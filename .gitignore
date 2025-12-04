@@ -5,3 +5,6 @@ node_modules/
 dist/
 .claude/
 .DS_Store
+
+# Generated framework bundle (created by prebuild script)
+framework-context.txt
